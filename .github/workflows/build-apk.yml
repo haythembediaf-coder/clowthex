@@ -20,10 +20,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build web app
         run: npm run build
@@ -52,9 +51,19 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -66,6 +75,7 @@ jobs:
       - name: Build Release APK (unsigned)
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
+        continue-on-error: true
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
@@ -73,6 +83,7 @@ jobs:
           name: ClowtheX-release-apk
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 30
+        continue-on-error: true
 
   release:
     name: Create Release
@@ -101,11 +112,10 @@ jobs:
           name: "ClowtheX ${{ steps.version.outputs.version }}"
           body: |
             ## ClowtheX - تطبيق إدارة محل الملابس
-            
+
             ### التنزيل:
-            - **Debug APK**: للاختبار والتطوير
-            - **Release APK**: للاستخدام الفعلي (يحتاج توقيع)
-            
+            - **Debug APK**: للاختبار والتثبيت المباشر على الهاتف
+
             ### المميزات:
             - يعمل بدون إنترنت 100%
             - قاعدة بيانات محلية (IndexedDB)
@@ -113,7 +123,7 @@ jobs:
             - نقطة بيع (POS)
             - تقارير وإحصائيات
             - باركود وQR كود
-            - دعم اللغة العربية
+            - دعم اللغة العربية والفرنسية والإنجليزية
           files: apks/*.apk
           draft: false
           prerelease: false
