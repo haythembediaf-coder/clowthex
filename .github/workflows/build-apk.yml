@@ -51,9 +51,10 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Generate Android Icons (ImageMagick)
+      - name: Generate Android Icons
         shell: bash
         run: |
+          sudo apt-get install -y imagemagick 2>/dev/null || true
           SRC="assets/icon.png"
           BASE="android/app/src/main/res"
           mkdir -p "$BASE/mipmap-mdpi" "$BASE/mipmap-hdpi" "$BASE/mipmap-xhdpi" "$BASE/mipmap-xxhdpi" "$BASE/mipmap-xxxhdpi" "$BASE/mipmap-anydpi-v26" "$BASE/values"
