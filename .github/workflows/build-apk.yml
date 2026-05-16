@@ -51,167 +51,117 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ─────────────────────────────────────────────────────
-      # FIX 1: App Icon — use ImageMagick (built into ubuntu)
-      # ─────────────────────────────────────────────────────
       - name: Generate Android Icons (ImageMagick)
+        shell: bash
         run: |
           SRC="assets/icon.png"
           BASE="android/app/src/main/res"
-
-          # Regular launcher icons
-          declare -A SIZES=(
-            ["mipmap-mdpi"]=48
-            ["mipmap-hdpi"]=72
-            ["mipmap-xhdpi"]=96
-            ["mipmap-xxhdpi"]=144
-            ["mipmap-xxxhdpi"]=192
-          )
-
-          for DIR in "${!SIZES[@]}"; do
-            SIZE="${SIZES[$DIR]}"
-            mkdir -p "$BASE/$DIR"
-            convert "$SRC" -resize "${SIZE}x${SIZE}" "$BASE/$DIR/ic_launcher.png"
-            convert "$SRC" -resize "${SIZE}x${SIZE}" "$BASE/$DIR/ic_launcher_round.png"
-            echo "Generated $DIR: ${SIZE}x${SIZE}"
-          done
-
-          # Foreground adaptive icons (108dp base)
-          declare -A FG_SIZES=(
-            ["mipmap-mdpi"]=108
-            ["mipmap-hdpi"]=162
-            ["mipmap-xhdpi"]=216
-            ["mipmap-xxhdpi"]=324
-            ["mipmap-xxxhdpi"]=432
-          )
-
-          for DIR in "${!FG_SIZES[@]}"; do
-            SIZE="${FG_SIZES[$DIR]}"
-            mkdir -p "$BASE/$DIR"
-            convert "$SRC" -resize "${SIZE}x${SIZE}" "$BASE/$DIR/ic_launcher_foreground.png"
-          done
-
-          # Adaptive icon XML
-          mkdir -p "$BASE/mipmap-anydpi-v26"
-          cat > "$BASE/mipmap-anydpi-v26/ic_launcher.xml" << 'XMLEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@color/ic_launcher_background"/>
-              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-          </adaptive-icon>
-          XMLEOF
+          mkdir -p "$BASE/mipmap-mdpi" "$BASE/mipmap-hdpi" "$BASE/mipmap-xhdpi" "$BASE/mipmap-xxhdpi" "$BASE/mipmap-xxxhdpi" "$BASE/mipmap-anydpi-v26" "$BASE/values"
+          convert "$SRC" -resize 48x48   "$BASE/mipmap-mdpi/ic_launcher.png"
+          convert "$SRC" -resize 48x48   "$BASE/mipmap-mdpi/ic_launcher_round.png"
+          convert "$SRC" -resize 72x72   "$BASE/mipmap-hdpi/ic_launcher.png"
+          convert "$SRC" -resize 72x72   "$BASE/mipmap-hdpi/ic_launcher_round.png"
+          convert "$SRC" -resize 96x96   "$BASE/mipmap-xhdpi/ic_launcher.png"
+          convert "$SRC" -resize 96x96   "$BASE/mipmap-xhdpi/ic_launcher_round.png"
+          convert "$SRC" -resize 144x144 "$BASE/mipmap-xxhdpi/ic_launcher.png"
+          convert "$SRC" -resize 144x144 "$BASE/mipmap-xxhdpi/ic_launcher_round.png"
+          convert "$SRC" -resize 192x192 "$BASE/mipmap-xxxhdpi/ic_launcher.png"
+          convert "$SRC" -resize 192x192 "$BASE/mipmap-xxxhdpi/ic_launcher_round.png"
+          convert "$SRC" -resize 108x108 "$BASE/mipmap-mdpi/ic_launcher_foreground.png"
+          convert "$SRC" -resize 162x162 "$BASE/mipmap-hdpi/ic_launcher_foreground.png"
+          convert "$SRC" -resize 216x216 "$BASE/mipmap-xhdpi/ic_launcher_foreground.png"
+          convert "$SRC" -resize 324x324 "$BASE/mipmap-xxhdpi/ic_launcher_foreground.png"
+          convert "$SRC" -resize 432x432 "$BASE/mipmap-xxxhdpi/ic_launcher_foreground.png"
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/ic_launcher_background"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>' > "$BASE/mipmap-anydpi-v26/ic_launcher.xml"
           cp "$BASE/mipmap-anydpi-v26/ic_launcher.xml" "$BASE/mipmap-anydpi-v26/ic_launcher_round.xml"
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0F0F0F</color>\n</resources>' > "$BASE/values/ic_launcher_background.xml"
+          echo "Icons generated!"
 
-          # Adaptive icon background color
-          mkdir -p "$BASE/values"
-          cat > "$BASE/values/ic_launcher_background.xml" << 'XMLEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <color name="ic_launcher_background">#0F0F0F</color>
-          </resources>
-          XMLEOF
-
-          echo "All icons generated successfully!"
-
-      # ─────────────────────────────────────────────────────
-      # FIX 2: Camera Permissions in AndroidManifest.xml
-      # ─────────────────────────────────────────────────────
-      - name: Patch Camera Permissions (AndroidManifest)
+      - name: Add Camera Permissions to AndroidManifest
+        shell: bash
         run: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          sed -i 's|</manifest>|    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />\n</manifest>|' "$MANIFEST"
-          echo "Camera permissions added to AndroidManifest.xml"
-          grep "CAMERA\|camera" "$MANIFEST"
+          M="android/app/src/main/AndroidManifest.xml"
+          sed -i 's|</manifest>|    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>\n</manifest>|' "$M"
+          grep "camera\|CAMERA" "$M" && echo "Camera permissions added OK"
 
-      # ─────────────────────────────────────────────────────
-      # FIX 3: MainActivity — handle WebView camera permission
-      # ─────────────────────────────────────────────="────"
-      - name: Patch MainActivity for Camera in WebView
+      - name: Patch MainActivity for WebView Camera
+        shell: bash
         run: |
           MAIN="android/app/src/main/java/com/haythemgroup/clowthex/MainActivity.java"
-          cat > "$MAIN" << 'JAVAEOF'
-package com.haythemgroup.clowthex;
+          node -e "
+          const fs = require('fs');
+          const java = \`package com.haythemgroup.clowthex;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.os.Bundle;
-import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import com.getcapacitor.BridgeActivity;
+          import android.Manifest;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.PermissionRequest;
+          import android.webkit.WebChromeClient;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+          import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {
+          public class MainActivity extends BridgeActivity {
+              private static final int CAMERA_CODE = 100;
+              private PermissionRequest pendingRequest;
 
-    private static final int CAMERA_PERMISSION_CODE = 100;
-    private PermissionRequest pendingPermissionRequest;
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(final PermissionRequest req) {
+                          runOnUiThread(() -> {
+                              boolean hasCam = ContextCompat.checkSelfPermission(
+                                  MainActivity.this, Manifest.permission.CAMERA
+                              ) == PackageManager.PERMISSION_GRANTED;
+                              if (hasCam) {
+                                  req.grant(req.getResources());
+                              } else {
+                                  pendingRequest = req;
+                                  ActivityCompat.requestPermissions(MainActivity.this,
+                                      new String[]{Manifest.permission.CAMERA}, CAMERA_CODE);
+                              }
+                          });
+                      }
+                  });
+              }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> {
-                    boolean hasCam = ContextCompat.checkSelfPermission(
-                        MainActivity.this, Manifest.permission.CAMERA
-                    ) == PackageManager.PERMISSION_GRANTED;
-                    if (hasCam) {
-                        request.grant(request.getResources());
-                    } else {
-                        pendingPermissionRequest = request;
-                        ActivityCompat.requestPermissions(
-                            MainActivity.this,
-                            new String[]{Manifest.permission.CAMERA},
-                            CAMERA_PERMISSION_CODE
-                        );
-                    }
-                });
-            }
-        });
-    }
+              @Override
+              public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+                  super.onRequestPermissionsResult(code, perms, results);
+                  if (code == CAMERA_CODE && pendingRequest != null) {
+                      if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+                          pendingRequest.grant(pendingRequest.getResources());
+                      } else {
+                          pendingRequest.deny();
+                      }
+                      pendingRequest = null;
+                  }
+              }
+          }\`;
+          fs.writeFileSync('$MAIN', java);
+          console.log('MainActivity patched!');
+          "
 
-    @Override
-    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
-        super.onRequestPermissionsResult(code, perms, results);
-        if (code == CAMERA_PERMISSION_CODE && pendingPermissionRequest != null) {
-            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
-                pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
-            } else {
-                pendingPermissionRequest.deny();
-            }
-            pendingPermissionRequest = null;
-        }
-    }
-}
-JAVAEOF
-          echo "MainActivity patched for camera WebView support"
-
-      # ─────────────────────────────────────────────────────
-      # FIX 4: Black Screen — set dark background in styles
-      # ─────────────────────────────────────────────────────
-      - name: Fix Black Screen (window background)
+      - name: Fix Black Screen on Launch
+        shell: bash
         run: |
           COLORS="android/app/src/main/res/values/colors.xml"
           STYLES="android/app/src/main/res/values/styles.xml"
-
-          # Add splash background color
-          if [ -f "$COLORS" ]; then
-            grep -q "splash_background" "$COLORS" || \
-              sed -i 's|</resources>|    <color name="splash_background">#0F0F0F</color>\n</resources>|' "$COLORS"
+          if grep -q "splash_background" "$COLORS" 2>/dev/null; then
+            echo "splash_background already exists"
           else
-            mkdir -p "android/app/src/main/res/values"
-            printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="splash_background">#0F0F0F</color>\n</resources>' > "$COLORS"
-          fi
-
-          # Patch launch style to use dark window background
-          if [ -f "$STYLES" ]; then
-            if ! grep -q "splash_background" "$STYLES"; then
-              sed -i 's|<style name="AppTheme.NoActionBarLaunch"[^>]*>|&\n        <item name="android:windowBackground">@color/splash_background</item>|' "$STYLES"
+            if [ -f "$COLORS" ]; then
+              sed -i 's|</resources>|    <color name="splash_background">#0F0F0F</color>\n</resources>|' "$COLORS"
+            else
+              printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="splash_background">#0F0F0F</color>\n</resources>' > "$COLORS"
             fi
-            echo "Styles patched:"
-            cat "$STYLES"
           fi
+          if [ -f "$STYLES" ] && ! grep -q "splash_background" "$STYLES"; then
+            sed -i 's|<style name="AppTheme.NoActionBarLaunch"[^>]*>|&\n        <item name="android:windowBackground">@color/splash_background</item>|' "$STYLES"
+          fi
+          echo "Black screen fix applied"
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew
@@ -236,35 +186,24 @@ JAVAEOF
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # ─────────────────────────────────────────────────────
-      # FIX 5: Sign Release APK
-      # ─────────────────────────────────────────────────────
       - name: Build Release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Sign Release APK
+        shell: bash
         run: |
-          keytool -genkey -v \
-            -keystore /tmp/clowthex.jks \
-            -alias clowthex \
+          keytool -genkey -v -keystore /tmp/clowthex.jks -alias clowthex \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=ClowtheX,OU=HaythemGroup,O=HaythemGroup,L=Algeria,ST=Algeria,C=DZ" \
             -storepass clowthex2024 -keypass clowthex2024 -noprompt
-
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -r | head -1)
-          echo "apksigner: $APKSIGNER"
-
           $APKSIGNER sign \
-            --ks /tmp/clowthex.jks \
-            --ks-alias clowthex \
-            --ks-pass pass:clowthex2024 \
-            --key-pass pass:clowthex2024 \
+            --ks /tmp/clowthex.jks --ks-alias clowthex \
+            --ks-pass pass:clowthex2024 --key-pass pass:clowthex2024 \
             --out android/app/build/outputs/apk/release/app-release-signed.apk \
             android/app/build/outputs/apk/release/app-release-unsigned.apk
-
-          echo "Signed APK size:"
-          ls -lh android/app/build/outputs/apk/release/app-release-signed.apk
+          ls -lh android/app/build/outputs/apk/release/
 
       - name: Upload Release APK (Signed)
         uses: actions/upload-artifact@v4
@@ -275,6 +214,7 @@ JAVAEOF
 
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.run_number }}"
@@ -282,25 +222,22 @@ JAVAEOF
           body: |
             ## ClowtheX - تطبيق إدارة محل الملابس
 
-            ### ما تم إصلاحه:
-            - ✅ أيقونة التطبيق (قميص في صندوق ذهبي)
-            - ✅ حل مشكلة الشاشة السوداء عند الفتح
-            - ✅ حل مشكلة رفض إذن الكاميرا
-            - ✅ Release APK موقع وجاهز للتثبيت
+            ### ما تم اصلاحه:
+            - ايقونة التطبيق الجديدة (قميص في صندوق ذهبي)
+            - حل مشكلة الشاشة السوداء عند الفتح
+            - حل مشكلة رفض اذن الكاميرا
+            - Release APK موقع وجاهز للتثبيت
 
             ### التنزيل:
-            - **app-debug.apk** — للاختبار
-            - **app-release-signed.apk** — للاستخدام الفعلي ✅
+            - app-debug.apk - للاختبار
+            - app-release-signed.apk - للاستخدام الفعلي
 
             ### طريقة التثبيت:
             1. حمّل ملف APK
-            2. فعّل "تثبيت من مصادر غير معروفة" في الإعدادات
+            2. فعّل تثبيت من مصادر غير معروفة
             3. افتح الملف وثبّته
           files: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/release/app-release-signed.apk
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
