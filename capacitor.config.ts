@@ -12,10 +12,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
-      launchAutoHide: true,
+      launchShowDuration: 0,
+      launchAutoHide: false,
       backgroundColor: "#0f0f0f",
-      androidSplashResourceName: "splash",
       showSpinner: false,
     },
     StatusBar: {
@@ -27,9 +26,6 @@ const config: CapacitorConfig = {
       resize: "body",
       style: "dark",
       resizeOnFullScreen: true,
-    },
-    Camera: {
-      permissions: ["camera"],
     },
   },
 };
