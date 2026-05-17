@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Languages, Coins, Palette, Download, Upload, Store, Save, AlertTriangle } from "lucide-react";
+import {
+  Languages,
+  Coins,
+  Palette,
+  Download,
+  Upload,
+  Store,
+  Save,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -21,63 +32,44 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useApp } from "@/contexts/AppContext";
+import { getSetting, setSetting } from "@/lib/db";
 import {
-  getAllProducts,
-  getAllSales,
-  getAllSettings,
-  importAllData,
-  getSetting,
-  setSetting,
-  type Product,
-  type Sale,
-  type Settings,
-} from "@/lib/db";
+  exportBackup,
+  parseBackupFile,
+  restoreBackup,
+  type ImportPreview,
+} from "@/lib/backup";
 import { toast } from "sonner";
 import type { Lang } from "@/i18n/translations";
 import type { Currency } from "@/lib/db";
 
-interface ImportPreview {
-  products: Product[];
-  sales: Sale[];
-  settings?: Settings[];
-  exportedAt?: string;
-}
-
 export function SettingsPage() {
-  const {
-    t,
-    lang,
-    setLang,
-    theme,
-    setTheme,
-    currency,
-    setCurrency,
-    exchangeRate,
-    setExchangeRate,
-  } = useApp();
+  const { t, lang, setLang, theme, setTheme, currency, setCurrency, exchangeRate, setExchangeRate } =
+    useApp();
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [storeName, setStoreName] = useState("");
-  const [storePhone, setStorePhone] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [storeName, setStoreName]     = useState("");
+  const [storePhone, setStorePhone]   = useState("");
   const [storeAddress, setStoreAddress] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
-  const [importing, setImporting] = useState(false);
 
+  const [exporting, setExporting]           = useState(false);
+  const [importPreview, setImportPreview]   = useState<ImportPreview | null>(null);
+  const [confirming, setConfirming]         = useState(false);
+
+  // ── Load store settings ────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      setStoreName((await getSetting<string>("storeName")) || "");
-      setStorePhone((await getSetting<string>("storePhone")) || "");
-      setStoreAddress((await getSetting<string>("storeAddress")) || "");
+      const [n, p, a] = await Promise.all([
+        getSetting<string>("storeName"),
+        getSetting<string>("storePhone"),
+        getSetting<string>("storeAddress"),
+      ]);
+      if (n) setStoreName(n);
+      if (p) setStorePhone(p);
+      if (a) setStoreAddress(a);
     })();
   }, []);
-
-  const saveStore = async (
-    key: "storeName" | "storePhone" | "storeAddress",
-    value: string,
-  ) => {
-    await setSetting(key, value);
-  };
 
   const handleSaveStore = async () => {
     await Promise.all([
@@ -88,167 +80,98 @@ export function SettingsPage() {
     toast.success(t.settings.saved);
   };
 
+  // ── Export ─────────────────────────────────────────────────────────────────
   const handleExport = async () => {
     try {
       setExporting(true);
-      const [products, sales, settings] = await Promise.all([
-        getAllProducts(),
-        getAllSales(),
-        getAllSettings(),
-      ]);
-
-      const data = {
-        version: 3,
-        appName: "ClowtheX",
-        exportedAt: new Date().toISOString(),
-        products,
-        sales,
-        settings,
-      };
-
-      const json = JSON.stringify(data, null, 2);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `clowthex-backup-${dateStr}.json`;
-
-      // Try Web Share API (native save dialog on Android)
-      if (typeof navigator.share === "function") {
-        try {
-          const file = new File([json], fileName, { type: "application/json" });
-          const canShare =
-            typeof navigator.canShare === "function" &&
-            navigator.canShare({ files: [file] });
-          if (canShare) {
-            await navigator.share({
-              files: [file],
-              title: "ClowtheX Backup",
-            });
-            toast.success(
-              lang === "ar"
-                ? "تم التصدير بنجاح"
-                : lang === "fr"
-                  ? "Exporté avec succès"
-                  : "Exported successfully",
-            );
-            return;
-          }
-        } catch (shareErr) {
-          // User cancelled share — don't fallthrough to download
-          if ((shareErr as DOMException)?.name === "AbortError") return;
-        }
-      }
-
-      // Fallback: trigger browser download
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-
+      const fileName = await exportBackup();
       toast.success(
         lang === "ar"
-          ? `تم التصدير — ${products.length} منتج، ${sales.length} عملية بيع`
+          ? `✅ تم التصدير: ${fileName}`
           : lang === "fr"
-            ? `Exporté — ${products.length} produits, ${sales.length} ventes`
-            : `Exported — ${products.length} products, ${sales.length} sales`,
+          ? `✅ Exporté: ${fileName}`
+          : `✅ Exported: ${fileName}`,
+        { duration: 4000 },
       );
-    } catch {
+    } catch (err) {
+      // User cancelled the share dialog — not an error
+      const name = (err as DOMException | Error)?.name;
+      if (name === "AbortError") return;
+      console.error("Export error:", err);
       toast.error(
-        lang === "ar" ? "فشل التصدير" : lang === "fr" ? "Échec export" : "Export failed",
+        lang === "ar" ? "فشل التصدير" : lang === "fr" ? "Échec de l'export" : "Export failed",
       );
     } finally {
       setExporting(false);
     }
   };
 
+  // ── Import — step 1: pick file ─────────────────────────────────────────────
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    // Reset input so same file can be picked again later
     e.target.value = "";
+    if (!file) return;
 
     try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-
-      if (!Array.isArray(data.products)) {
-        toast.error(t.settings.importError);
-        return;
-      }
-
-      // Show confirmation dialog with preview
-      setImportPreview({
-        products: data.products ?? [],
-        sales: data.sales ?? [],
-        settings: data.settings,
-        exportedAt: data.exportedAt,
-      });
-    } catch {
-      toast.error(t.settings.importError);
+      const preview = await parseBackupFile(file);
+      setImportPreview(preview);
+    } catch (err) {
+      const msg = (err as Error).message;
+      const label =
+        lang === "ar"
+          ? msg === "INVALID_JSON"
+            ? "الملف تالف أو غير صالح"
+            : msg === "MISSING_PRODUCTS"
+            ? "الملف لا يحتوي على بيانات منتجات"
+            : "ملف غير معروف"
+          : lang === "fr"
+          ? "Fichier invalide"
+          : "Invalid backup file";
+      toast.error(label);
     }
   };
 
-  const confirmImport = async () => {
+  // ── Import — step 2: confirm & restore ────────────────────────────────────
+  const handleConfirmImport = async () => {
     if (!importPreview) return;
     try {
-      setImporting(true);
-      await importAllData({
-        products: importPreview.products,
-        sales: importPreview.sales,
-        settings: importPreview.settings,
-      });
+      setConfirming(true);
+      await restoreBackup(importPreview);
       setImportPreview(null);
-      toast.success(t.settings.imported);
-      // Reload page to refresh all app state
-      setTimeout(() => window.location.reload(), 800);
-    } catch {
+      toast.success(t.settings.imported, { duration: 3000 });
+      // Reload to refresh all React state / IndexedDB caches
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err) {
+      console.error("Import error:", err);
       toast.error(t.settings.importError);
     } finally {
-      setImporting(false);
+      setConfirming(false);
     }
   };
 
-  const cancelImport = () => {
-    setImportPreview(null);
-  };
+  // ── i18n helpers ──────────────────────────────────────────────────────────
+  const i = (ar: string, fr: string, en: string) =>
+    lang === "ar" ? ar : lang === "fr" ? fr : en;
 
-  const importDialogTitle =
-    lang === "ar"
-      ? "تأكيد الاستيراد"
-      : lang === "fr"
-        ? "Confirmer l'importation"
-        : "Confirm Import";
-
-  const importDialogDesc =
-    lang === "ar"
-      ? "سيتم استبدال جميع البيانات الحالية بهذا الملف. هذا الإجراء لا يمكن التراجع عنه."
-      : lang === "fr"
-        ? "Toutes les données actuelles seront remplacées par ce fichier. Cette action est irréversible."
-        : "All current data will be replaced with this file. This action cannot be undone.";
-
-  const confirmLabel =
-    lang === "ar" ? "نعم، استورد" : lang === "fr" ? "Importer" : "Yes, Import";
-  const cancelLabel =
-    lang === "ar" ? "إلغاء" : lang === "fr" ? "Annuler" : "Cancel";
-
-  const productsLabel =
-    lang === "ar" ? "منتج" : lang === "fr" ? "produit(s)" : "product(s)";
-  const salesLabel =
-    lang === "ar" ? "عملية بيع" : lang === "fr" ? "vente(s)" : "sale(s)";
+  const fmt = (d: Date | null) =>
+    d
+      ? d.toLocaleString(lang === "ar" ? "ar-DZ" : lang, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : "";
 
   return (
     <div className="px-4 py-5 space-y-5">
       <h2 className="text-xl font-bold">{t.settings.title}</h2>
 
+      {/* ── Language ─────────────────────────────────────────────────────── */}
       <Section icon={<Languages className="w-4 h-4" />}>
         <div>
           <Label className="text-xs">{t.settings.language}</Label>
           <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
-            <SelectTrigger className="mt-1">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ar">العربية</SelectItem>
               <SelectItem value="fr">Français</SelectItem>
@@ -258,16 +181,12 @@ export function SettingsPage() {
         </div>
       </Section>
 
+      {/* ── Currency ─────────────────────────────────────────────────────── */}
       <Section icon={<Coins className="w-4 h-4" />}>
         <div>
           <Label className="text-xs">{t.settings.currency}</Label>
-          <Select
-            value={currency}
-            onValueChange={(v) => setCurrency(v as Currency)}
-          >
-            <SelectTrigger className="mt-1">
-              <SelectValue />
-            </SelectTrigger>
+          <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="DZD">DZD — د.ج</SelectItem>
               <SelectItem value="EUR">EUR — €</SelectItem>
@@ -282,43 +201,35 @@ export function SettingsPage() {
             min="0"
             step="0.01"
             value={exchangeRate}
-            onChange={(e) =>
-              setExchangeRate(Math.max(0, Number(e.target.value) || 0))
-            }
+            onChange={(e) => setExchangeRate(Math.max(0, Number(e.target.value) || 0))}
             className="mt-1"
           />
         </div>
       </Section>
 
+      {/* ── Theme ────────────────────────────────────────────────────────── */}
       <Section icon={<Palette className="w-4 h-4" />}>
         <div>
           <Label className="text-xs">{t.settings.theme}</Label>
           <div className="grid grid-cols-2 gap-2 mt-1">
-            <Button
-              variant={theme === "light" ? "gold" : "outline"}
-              onClick={() => setTheme("light")}
-              size="sm"
-            >
+            <Button variant={theme === "light" ? "gold" : "outline"} onClick={() => setTheme("light")} size="sm">
               {t.settings.themeLight}
             </Button>
-            <Button
-              variant={theme === "dark" ? "gold" : "outline"}
-              onClick={() => setTheme("dark")}
-              size="sm"
-            >
+            <Button variant={theme === "dark" ? "gold" : "outline"} onClick={() => setTheme("dark")} size="sm">
               {t.settings.themeDark}
             </Button>
           </div>
         </div>
       </Section>
 
+      {/* ── Store info ───────────────────────────────────────────────────── */}
       <Section icon={<Store className="w-4 h-4" />} title={t.settings.store}>
         <div>
           <Label className="text-xs">{t.settings.storeName}</Label>
           <Input
             value={storeName}
             onChange={(e) => setStoreName(e.target.value)}
-            onBlur={() => saveStore("storeName", storeName)}
+            onBlur={() => setSetting("storeName", storeName)}
             className="mt-1"
           />
         </div>
@@ -327,7 +238,7 @@ export function SettingsPage() {
           <Input
             value={storePhone}
             onChange={(e) => setStorePhone(e.target.value)}
-            onBlur={() => saveStore("storePhone", storePhone)}
+            onBlur={() => setSetting("storePhone", storePhone)}
             className="mt-1"
           />
         </div>
@@ -336,7 +247,7 @@ export function SettingsPage() {
           <Input
             value={storeAddress}
             onChange={(e) => setStoreAddress(e.target.value)}
-            onBlur={() => saveStore("storeAddress", storeAddress)}
+            onBlur={() => setSetting("storeAddress", storeAddress)}
             className="mt-1"
           />
         </div>
@@ -346,75 +257,121 @@ export function SettingsPage() {
         </Button>
       </Section>
 
+      {/* ── Backup ───────────────────────────────────────────────────────── */}
       <Section icon={<Download className="w-4 h-4" />} title={t.settings.backup}>
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={handleExport} disabled={exporting}>
-            <Download className="w-4 h-4" />
-            {exporting
-              ? lang === "ar" ? "جارٍ..." : "..."
-              : t.settings.export}
-          </Button>
+        {/* Description */}
+        <p className="text-xs text-muted-foreground">
+          {i(
+            "احفظ نسخة من جميع بيانات التطبيق أو استعدها من نسخة سابقة.",
+            "Sauvegardez ou restaurez toutes vos données.",
+            "Back up or restore all your app data.",
+          )}
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Export button */}
           <Button
             variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={importing}
+            className="flex-col h-20 gap-1 border-dashed"
+            onClick={handleExport}
+            disabled={exporting}
           >
-            <Upload className="w-4 h-4" />
-            {t.settings.import}
+            {exporting ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Download className="w-5 h-5 text-green-500" />
+            )}
+            <span className="text-xs font-medium">
+              {exporting
+                ? i("جارٍ التصدير…", "Export…", "Exporting…")
+                : t.settings.export}
+            </span>
           </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={handleFileChange}
-          />
+
+          {/* Import button */}
+          <Button
+            variant="outline"
+            className="flex-col h-20 gap-1 border-dashed"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={confirming}
+          >
+            <Upload className="w-5 h-5 text-blue-500" />
+            <span className="text-xs font-medium">{t.settings.import}</span>
+          </Button>
         </div>
+
+        {/* Hidden file input — accept JSON broadly for max Android compat */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json,text/plain,*/*"
+          hidden
+          onChange={handleFileChange}
+        />
       </Section>
 
-      {/* Import Confirmation Dialog */}
-      <AlertDialog open={!!importPreview} onOpenChange={(o) => !o && cancelImport()}>
+      {/* ── Import confirmation dialog ────────────────────────────────────── */}
+      <AlertDialog open={!!importPreview} onOpenChange={(open) => !open && !confirming && setImportPreview(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              {importDialogTitle}
+              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+              {i("تأكيد الاستيراد", "Confirmer l'importation", "Confirm Import")}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>{importDialogDesc}</p>
+              <div className="space-y-3 text-sm">
+                <p className="text-destructive font-medium">
+                  {i(
+                    "⚠️ سيتم حذف جميع البيانات الحالية واستبدالها بمحتوى الملف. هذا الإجراء لا يمكن التراجع عنه.",
+                    "⚠️ Toutes les données actuelles seront remplacées. Cette action est irréversible.",
+                    "⚠️ All current data will be replaced. This cannot be undone.",
+                  )}
+                </p>
+
                 {importPreview && (
-                  <div className="rounded-lg bg-muted p-3 text-sm space-y-1">
+                  <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
                     {importPreview.exportedAt && (
-                      <p className="text-muted-foreground text-xs">
-                        {new Date(importPreview.exportedAt).toLocaleString(
-                          lang === "ar" ? "ar-DZ" : lang,
-                        )}
+                      <p className="text-xs text-muted-foreground">
+                        {i("تاريخ النسخة:", "Date:", "Backup date:")} {fmt(importPreview.exportedAt)}
                       </p>
                     )}
-                    <p className="font-medium">
-                      📦 {importPreview.products.length} {productsLabel}
-                    </p>
-                    <p className="font-medium">
-                      🧾 {importPreview.sales.length} {salesLabel}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <span>
+                        <strong>{importPreview.productsCount}</strong>{" "}
+                        {i("منتج", "produit(s)", "product(s)")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <span>
+                        <strong>{importPreview.salesCount}</strong>{" "}
+                        {i("عملية بيع", "vente(s)", "sale(s)")}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelImport} disabled={importing}>
-              {cancelLabel}
+            <AlertDialogCancel disabled={confirming}>
+              {i("إلغاء — لا تغيير", "Annuler", "Cancel — keep data")}
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmImport}
-              disabled={importing}
+              onClick={handleConfirmImport}
+              disabled={confirming}
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              {importing
-                ? lang === "ar" ? "جارٍ الاستيراد..." : "Importing..."
-                : confirmLabel}
+              {confirming ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {i("جارٍ الاستيراد…", "Importation…", "Importing…")}
+                </>
+              ) : (
+                i("نعم، استورد البيانات", "Importer", "Yes, Import")
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -435,9 +392,7 @@ function Section({
   return (
     <div className="rounded-xl border bg-card p-4 shadow-elegant space-y-3">
       <div className="flex items-center gap-2 text-gold">
-        <span className="w-7 h-7 rounded-md bg-gold/15 grid place-items-center">
-          {icon}
-        </span>
+        <span className="w-7 h-7 rounded-md bg-gold/15 grid place-items-center">{icon}</span>
         {title && <span className="text-sm font-semibold">{title}</span>}
       </div>
       {children}
