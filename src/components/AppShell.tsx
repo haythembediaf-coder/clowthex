@@ -7,6 +7,7 @@ import {
   ShoppingCart,
   BarChart3,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import logo from "@/assets/clowthex-logo.png";
 import { useApp } from "@/contexts/AppContext";
 import { InventoryPage } from "@/pages/InventoryPage";
@@ -47,7 +48,19 @@ export function AppShell() {
         </div>
       </header>
 
-      
+      {tab !== "settings" && (
+        <div className="mx-4 md:mx-0 mt-4">
+          <div className="rounded-2xl border border-dashed border-border bg-secondary/80 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">{t.settings.backup}</p>
+              <p className="text-xs text-muted-foreground">
+                اضغط زر الإعدادات للوصول إلى استيراد وتصدير البيانات.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setTab("settings")}>{t.nav.settings}</Button>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 max-w-3xl mx-auto w-full pb-24">
         {tab === "inventory" && <InventoryPage />}
