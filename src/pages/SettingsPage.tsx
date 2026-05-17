@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import {
   Languages,
   Coins,
@@ -10,6 +11,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  FolderOpen,
 } from "lucide-react";
 import {
   Select,
@@ -37,6 +39,7 @@ import {
   exportBackup,
   parseBackupFile,
   restoreBackup,
+  pickAndReadBackupFile,
   type ImportPreview,
 } from "@/lib/backup";
 import { toast } from "sonner";
@@ -133,6 +136,35 @@ export function SettingsPage() {
           ? "Fichier invalide"
           : "Invalid backup file";
       toast.error(label);
+    }
+  };
+
+  // ── Import from device (Android) ────────────────────────────────────────
+  const handleImportFromDevice = async () => {
+    try {
+      setConfirming(true);
+      const file = await pickAndReadBackupFile();
+      const preview = await parseBackupFile(file);
+      setImportPreview(preview);
+    } catch (err: any) {
+      console.error("Import from device error:", err);
+      // Fallback to file input if the device picker fails
+      if (err.message === "FILE_READ_ERROR" || err.message === "NO_BACKUP_FILES") {
+        toast.info(
+          lang === "ar"
+            ? "لم يتم العثور على نسخة احتياطية. استخدم زر الاستيراد لاختيار ملف."
+            : lang === "fr"
+            ? "Aucune sauvegarde trouvée. Utilisez le bouton importer pour choisir un fichier."
+            : "No backup found. Use the import button to select a file.",
+        );
+        fileInputRef.current?.click();
+      } else {
+        toast.error(
+          lang === "ar" ? "فشل قراءة الملف" : lang === "fr" ? "Échec de lecture" : "Failed to read file",
+        );
+      }
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -258,16 +290,39 @@ export function SettingsPage() {
             </span>
           </button>
 
-          {/* Import button */}
+          {/* Import button - Web / File picker */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={confirming}
             className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 text-white font-bold transition-all active:scale-95 cursor-pointer shadow-lg h-24"
           >
-            <Upload className="w-7 h-7" />
+            {confirming ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <Upload className="w-7 h-7" />
+            )}
             <span className="text-sm font-bold leading-tight">{t.settings.import}</span>
           </button>
+
+          {/* Import from device - Android native file */}
+          {Capacitor.isNativePlatform() && (
+            <button
+              type="button"
+              onClick={handleImportFromDevice}
+              disabled={confirming}
+              className="col-span-2 flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 text-white font-bold transition-all active:scale-95 cursor-pointer shadow-lg"
+            >
+              {confirming ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <FolderOpen className="w-6 h-6" />
+              )}
+              <span className="text-sm font-bold leading-tight">
+                {i("استيراد من الملفات المحفوظة", "Importer depuis l'appareil", "Import from saved files")}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Hidden file input */}

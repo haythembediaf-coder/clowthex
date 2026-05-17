@@ -156,3 +156,52 @@ export async function restoreBackup(preview: ImportPreview): Promise<void> {
     settings: preview.data.settings,
   });
 }
+
+// ─── Android File Picker Helper ───────────────────────────────────────────────
+
+/**
+ * Opens the native Android file picker to select a backup file.
+ * This is more reliable on Android than using a hidden file input.
+ * Returns the file content as a string, or throws an error if cancelled.
+ */
+export async function pickAndReadBackupFile(): Promise<File> {
+  // On Android, we read from the Documents directory where we saved backups
+  const docsDir = Directory.Documents;
+  
+  try {
+    // List all JSON files in Documents directory
+    const result = await Filesystem.readdir({
+      directory: docsDir,
+      path: "",
+    });
+    
+    // Find backup files (they start with "clowthex-backup-")
+    const backupFiles = result.files.filter(
+      (f) => f.name.startsWith("clowthex-backup-") && f.name.endsWith(".json")
+    );
+    
+    if (backupFiles.length === 0) {
+      throw new Error("NO_BACKUP_FILES");
+    }
+    
+    // Sort by name (newest first) and get the most recent one
+    backupFiles.sort((a, b) => b.name.localeCompare(a.name));
+    const mostRecent = backupFiles[0];
+    
+    // Read the file content
+    const content = await Filesystem.readFile({
+      directory: docsDir,
+      path: mostRecent.name,
+      encoding: Encoding.UTF8,
+    });
+    
+    // Create a File object from the content
+    const blob = new Blob([content.data], { type: "application/json" });
+    const file = new File([blob], mostRecent.name, { type: "application/json" });
+    
+    return file;
+  } catch (error: any) {
+    // If Filesystem fails, the user can still use the web file input
+    throw new Error("FILE_READ_ERROR");
+  }
+}
