@@ -3,6 +3,9 @@ import App from "./App.tsx";
 import "./index.css";
 
 async function init() {
+  // Fix touch event handling on Android/iOS
+  document.addEventListener("touchmove", () => {}, { passive: true });
+  
   const { Capacitor } = await import("@capacitor/core");
   if (Capacitor.isNativePlatform()) {
     const { SplashScreen } = await import("@capacitor/splash-screen");
