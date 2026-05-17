@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Languages, Coins, Palette, Download, Upload, Store, Save } from "lucide-react";
+import { Languages, Coins, Palette, Download, Upload, Store, Save, AlertTriangle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,21 +10,38 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useApp } from "@/contexts/AppContext";
 import {
   getAllProducts,
   getAllSales,
-  getDB,
-  saveProduct,
-  saveSale,
+  getAllSettings,
+  importAllData,
   getSetting,
   setSetting,
   type Product,
   type Sale,
+  type Settings,
 } from "@/lib/db";
 import { toast } from "sonner";
 import type { Lang } from "@/i18n/translations";
 import type { Currency } from "@/lib/db";
+
+interface ImportPreview {
+  products: Product[];
+  sales: Sale[];
+  settings?: Settings[];
+  exportedAt?: string;
+}
 
 export function SettingsPage() {
   const {
@@ -38,10 +55,14 @@ export function SettingsPage() {
     exchangeRate,
     setExchangeRate,
   } = useApp();
+
   const fileRef = useRef<HTMLInputElement>(null);
   const [storeName, setStoreName] = useState("");
   const [storePhone, setStorePhone] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -68,54 +89,154 @@ export function SettingsPage() {
   };
 
   const handleExport = async () => {
-    const [products, sales] = await Promise.all([getAllProducts(), getAllSales()]);
-    const data = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      products,
-      sales,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `style-stock-backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      setExporting(true);
+      const [products, sales, settings] = await Promise.all([
+        getAllProducts(),
+        getAllSales(),
+        getAllSettings(),
+      ]);
+
+      const data = {
+        version: 3,
+        appName: "ClowtheX",
+        exportedAt: new Date().toISOString(),
+        products,
+        sales,
+        settings,
+      };
+
+      const json = JSON.stringify(data, null, 2);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `clowthex-backup-${dateStr}.json`;
+
+      // Try Web Share API (native save dialog on Android)
+      if (typeof navigator.share === "function") {
+        try {
+          const file = new File([json], fileName, { type: "application/json" });
+          const canShare =
+            typeof navigator.canShare === "function" &&
+            navigator.canShare({ files: [file] });
+          if (canShare) {
+            await navigator.share({
+              files: [file],
+              title: "ClowtheX Backup",
+            });
+            toast.success(
+              lang === "ar"
+                ? "تم التصدير بنجاح"
+                : lang === "fr"
+                  ? "Exporté avec succès"
+                  : "Exported successfully",
+            );
+            return;
+          }
+        } catch (shareErr) {
+          // User cancelled share — don't fallthrough to download
+          if ((shareErr as DOMException)?.name === "AbortError") return;
+        }
+      }
+
+      // Fallback: trigger browser download
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      toast.success(
+        lang === "ar"
+          ? `تم التصدير — ${products.length} منتج، ${sales.length} عملية بيع`
+          : lang === "fr"
+            ? `Exporté — ${products.length} produits, ${sales.length} ventes`
+            : `Exported — ${products.length} products, ${sales.length} sales`,
+      );
+    } catch {
+      toast.error(
+        lang === "ar" ? "فشل التصدير" : lang === "fr" ? "Échec export" : "Export failed",
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
+
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (!Array.isArray(data.products)) throw new Error("invalid");
-      const db = await getDB();
-      const tx = db.transaction(["products", "sales"], "readwrite");
-      await tx.objectStore("products").clear();
-      if (db.objectStoreNames.contains("sales")) {
-        await tx.objectStore("sales").clear();
+
+      if (!Array.isArray(data.products)) {
+        toast.error(t.settings.importError);
+        return;
       }
-      await tx.done;
-      for (const p of data.products as Product[]) {
-        await saveProduct(p);
-      }
-      if (Array.isArray(data.sales)) {
-        for (const s of data.sales as Sale[]) {
-          const db2 = await getDB();
-          await db2.put("sales", s);
-        }
-      }
+
+      // Show confirmation dialog with preview
+      setImportPreview({
+        products: data.products ?? [],
+        sales: data.sales ?? [],
+        settings: data.settings,
+        exportedAt: data.exportedAt,
+      });
+    } catch {
+      toast.error(t.settings.importError);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    try {
+      setImporting(true);
+      await importAllData({
+        products: importPreview.products,
+        sales: importPreview.sales,
+        settings: importPreview.settings,
+      });
+      setImportPreview(null);
       toast.success(t.settings.imported);
+      // Reload page to refresh all app state
+      setTimeout(() => window.location.reload(), 800);
     } catch {
       toast.error(t.settings.importError);
     } finally {
-      e.target.value = "";
+      setImporting(false);
     }
   };
+
+  const cancelImport = () => {
+    setImportPreview(null);
+  };
+
+  const importDialogTitle =
+    lang === "ar"
+      ? "تأكيد الاستيراد"
+      : lang === "fr"
+        ? "Confirmer l'importation"
+        : "Confirm Import";
+
+  const importDialogDesc =
+    lang === "ar"
+      ? "سيتم استبدال جميع البيانات الحالية بهذا الملف. هذا الإجراء لا يمكن التراجع عنه."
+      : lang === "fr"
+        ? "Toutes les données actuelles seront remplacées par ce fichier. Cette action est irréversible."
+        : "All current data will be replaced with this file. This action cannot be undone.";
+
+  const confirmLabel =
+    lang === "ar" ? "نعم، استورد" : lang === "fr" ? "Importer" : "Yes, Import";
+  const cancelLabel =
+    lang === "ar" ? "إلغاء" : lang === "fr" ? "Annuler" : "Cancel";
+
+  const productsLabel =
+    lang === "ar" ? "منتج" : lang === "fr" ? "produit(s)" : "product(s)";
+  const salesLabel =
+    lang === "ar" ? "عملية بيع" : lang === "fr" ? "vente(s)" : "sale(s)";
 
   return (
     <div className="px-4 py-5 space-y-5">
@@ -227,23 +348,77 @@ export function SettingsPage() {
 
       <Section icon={<Download className="w-4 h-4" />} title={t.settings.backup}>
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={handleExport}>
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
             <Download className="w-4 h-4" />
-            {t.settings.export}
+            {exporting
+              ? lang === "ar" ? "جارٍ..." : "..."
+              : t.settings.export}
           </Button>
-          <Button variant="outline" onClick={() => fileRef.current?.click()}>
+          <Button
+            variant="outline"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+          >
             <Upload className="w-4 h-4" />
             {t.settings.import}
           </Button>
           <input
             ref={fileRef}
             type="file"
-            accept="application/json"
+            accept="application/json,.json"
             hidden
-            onChange={handleImport}
+            onChange={handleFileChange}
           />
         </div>
       </Section>
+
+      {/* Import Confirmation Dialog */}
+      <AlertDialog open={!!importPreview} onOpenChange={(o) => !o && cancelImport()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              {importDialogTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{importDialogDesc}</p>
+                {importPreview && (
+                  <div className="rounded-lg bg-muted p-3 text-sm space-y-1">
+                    {importPreview.exportedAt && (
+                      <p className="text-muted-foreground text-xs">
+                        {new Date(importPreview.exportedAt).toLocaleString(
+                          lang === "ar" ? "ar-DZ" : lang,
+                        )}
+                      </p>
+                    )}
+                    <p className="font-medium">
+                      📦 {importPreview.products.length} {productsLabel}
+                    </p>
+                    <p className="font-medium">
+                      🧾 {importPreview.sales.length} {salesLabel}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelImport} disabled={importing}>
+              {cancelLabel}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmImport}
+              disabled={importing}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {importing
+                ? lang === "ar" ? "جارٍ الاستيراد..." : "Importing..."
+                : confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
