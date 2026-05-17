@@ -24,6 +24,12 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Scrollable content area */
+.scroll-content {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ALL BUTTONS - CRITICAL FIX */
 button, [role="button"], input[type="button"], input[type="submit"], [type="button"] {
   -webkit-appearance: none;
