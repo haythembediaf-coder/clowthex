@@ -21,18 +21,18 @@ export interface Product {
 export interface SaleItem {
   productId: string;
   name: string;
-  unitPrice: number; // sale price at time of sale (DZD)
-  purchasePrice: number; // at time of sale (DZD)
+  unitPrice: number;
+  purchasePrice: number;
   quantity: number;
 }
 
 export interface Sale {
   id: string;
   items: SaleItem[];
-  subtotal: number; // DZD
-  discount: number; // DZD
-  total: number; // DZD
-  profit: number; // DZD
+  subtotal: number;
+  discount: number;
+  total: number;
+  profit: number;
   paymentMethod: "cash" | "card" | "other";
   currency: Currency;
   exchangeRate: number;
@@ -155,6 +155,35 @@ export async function getSetting<T = unknown>(key: string): Promise<T | undefine
 export async function setSetting(key: string, value: unknown) {
   const db = await getDB();
   await db.put("settings", { key, value });
+}
+
+export async function getAllSettings(): Promise<Settings[]> {
+  const db = await getDB();
+  return db.getAll("settings");
+}
+
+export async function importAllData(data: {
+  products: Product[];
+  sales: Sale[];
+  settings?: Settings[];
+}) {
+  const db = await getDB();
+  const tx = db.transaction(["products", "sales", "settings"], "readwrite");
+  await tx.objectStore("products").clear();
+  await tx.objectStore("sales").clear();
+  await tx.objectStore("settings").clear();
+  for (const p of data.products) {
+    await tx.objectStore("products").put(p);
+  }
+  for (const s of data.sales) {
+    await tx.objectStore("sales").put(s);
+  }
+  if (Array.isArray(data.settings)) {
+    for (const s of data.settings) {
+      await tx.objectStore("settings").put(s);
+    }
+  }
+  await tx.done;
 }
 
 export function newId() {
