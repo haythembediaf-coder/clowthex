@@ -65,7 +65,7 @@ jobs:
       - name: Patch MainActivity for WebView Camera
         run: |
           MAIN="android/app/src/main/java/com/haythemgroup/clowthex/MainActivity.java"
-          node scripts/patch-mainactivity.js "$MAIN"
+          node scripts/patch-mainactivity.cjs "$MAIN"
 
       - name: Fix Black Screen on Launch
         run: |
