@@ -57,15 +57,28 @@ jobs:
       - name: Add Camera and Storage Permissions
         run: |
           M="android/app/src/main/AndroidManifest.xml"
+          
           # Add camera permissions
           if ! grep -q "android.permission.CAMERA" "$M"; then
             sed -i 's|</manifest>|    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>\n</manifest>|' "$M"
           fi
-          # Add storage permissions for backup/restore
+          
+          # Add storage permissions for backup/restore (Android 10 and below)
           if ! grep -q "android.permission.READ_EXTERNAL_STORAGE" "$M"; then
             sed -i 's|</manifest>|    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n</manifest>|' "$M"
           fi
-          echo "=== Camera permissions ===" && grep -E "CAMERA|STORAGE" "$M" && echo "Permissions added successfully"
+          
+          # Add MEDIA permissions for Android 13+ (API 33)
+          if ! grep -q "android.permission.READ_MEDIA_IMAGES" "$M"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>\n</manifest>|' "$M"
+          fi
+          
+          # Enable legacy external storage for Android 10 (API 29)
+          if ! grep -q "requestLegacyExternalStorage" "$M"; then
+            sed -i 's|<application|<application android:requestLegacyExternalStorage="true"|g' "$M"
+          fi
+          
+          echo "=== All permissions ===" && grep -E "CAMERA|STORAGE|MEDIA|requestLegacyExternalStorage" "$M" && echo "Permissions added successfully"
 
       - name: Patch MainActivity for WebView Camera
         run: |
