@@ -3,8 +3,21 @@ import App from "./App.tsx";
 import "./index.css";
 
 async function init() {
-  // Fix touch event handling on Android/iOS
+  // Disable all passive listeners for touch
   document.addEventListener("touchmove", () => {}, { passive: true });
+  document.addEventListener("touchstart", () => {}, { passive: false });
+  document.addEventListener("touchend", () => {}, { passive: false });
+  document.addEventListener("click", () => {}, { passive: false });
+  
+  // Fix for Android button issues
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.width = "100%";
+    root.style.height = "100%";
+    root.style.display = "flex";
+    root.style.flexDirection = "column";
+    root.style.touchAction = "manipulation";
+  }
   
   const { Capacitor } = await import("@capacitor/core");
   if (Capacitor.isNativePlatform()) {
@@ -16,13 +29,13 @@ async function init() {
     } catch {
       // ignore on devices that don't support it
     }
-    createRoot(document.getElementById("root")!).render(<App />);
+    createRoot(root!).render(<App />);
     // Hide splash after React renders
     setTimeout(() => {
       SplashScreen.hide({ fadeOutDuration: 300 }).catch(() => {});
     }, 100);
   } else {
-    createRoot(document.getElementById("root")!).render(<App />);
+    createRoot(root!).render(<App />);
   }
 }
 
