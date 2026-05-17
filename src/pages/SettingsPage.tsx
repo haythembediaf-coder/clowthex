@@ -227,49 +227,51 @@ export function SettingsPage() {
       </Section>
 
       {/* ── Backup ───────────────────────────────────────────────────────── */}
-      <Section icon={<Download className="w-4 h-4" />} title={t.settings.backup}>
-        {/* Description */}
-        <p className="text-xs text-muted-foreground">
-          {i(
-            "احفظ نسخة من جميع بيانات التطبيق أو استعدها من نسخة سابقة.",
-            "Sauvegardez ou restaurez toutes vos données.",
-            "Back up or restore all your app data.",
-          )}
-        </p>
+      <div className="rounded-xl border-2 border-gold/50 bg-gradient-to-b from-gold/10 to-gold/5 p-5 space-y-4">
+        <div className="text-center space-y-2">
+          <h3 className="text-lg font-bold text-gold">{t.settings.backup}</h3>
+          <p className="text-sm text-muted-foreground">
+            {i(
+              "احفظ نسخة من جميع بيانات التطبيق أو استعدها من نسخة سابقة.",
+              "Sauvegardez ou restaurez toutes vos données.",
+              "Back up or restore all your app data.",
+            )}
+          </p>
+        </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {/* Export button */}
-          <Button
-            variant="outline"
-            className="flex-col h-20 gap-1 border-dashed"
+          <button
+            type="button"
             onClick={handleExport}
             disabled={exporting}
+            className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white font-bold transition-all active:scale-95 cursor-pointer shadow-lg h-24"
           >
             {exporting ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
-              <Download className="w-5 h-5 text-green-500" />
+              <Download className="w-7 h-7" />
             )}
-            <span className="text-xs font-medium">
+            <span className="text-sm font-bold leading-tight">
               {exporting
                 ? i("جارٍ التصدير…", "Export…", "Exporting…")
                 : t.settings.export}
             </span>
-          </Button>
+          </button>
 
           {/* Import button */}
-          <Button
-            variant="outline"
-            className="flex-col h-20 gap-1 border-dashed"
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={confirming}
+            className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 text-white font-bold transition-all active:scale-95 cursor-pointer shadow-lg h-24"
           >
-            <Upload className="w-5 h-5 text-blue-500" />
-            <span className="text-xs font-medium">{t.settings.import}</span>
-          </Button>
+            <Upload className="w-7 h-7" />
+            <span className="text-sm font-bold leading-tight">{t.settings.import}</span>
+          </button>
         </div>
 
-        {/* Hidden file input — accept JSON broadly for max Android compat */}
+        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -277,7 +279,7 @@ export function SettingsPage() {
           hidden
           onChange={handleFileChange}
         />
-      </Section>
+      </div>
 
       {/* ── Store info ───────────────────────────────────────────────────── */}
       <Section icon={<Store className="w-4 h-4" />} title={t.settings.store}>
