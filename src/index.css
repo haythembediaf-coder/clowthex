@@ -38,9 +38,6 @@ button, [role="button"], input[type="button"], input[type="submit"], [type="butt
   -webkit-tap-highlight-color: transparent !important;
   outline: none;
   border: none;
-  background: transparent;
-  padding: 0;
-  margin: 0;
   font-family: inherit;
   font-size: inherit;
 }

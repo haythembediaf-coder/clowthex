@@ -13,7 +13,7 @@ interface AppContextValue {
   setTheme: (t: Theme) => void;
   currency: Currency;
   setCurrency: (c: Currency) => void;
-  exchangeRate: number; // 1 EUR = ? DZD
+  exchangeRate: number;
   setExchangeRate: (r: number) => void;
   formatPrice: (dzd: number, currencyOverride?: Currency) => string;
   isReady: boolean;
@@ -81,15 +81,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const t = translations[lang] as Translation;
 
   const formatPrice = (dzd: number, currencyOverride?: Currency) => {
-    const cur = currencyOverride ?? currency;
-    if (cur === "EUR") {
-      const v = dzd / (exchangeRate || 1);
-      return new Intl.NumberFormat(lang === "ar" ? "ar-DZ" : lang, {
-        style: "currency",
-        currency: "EUR",
-        maximumFractionDigits: 2,
-      }).format(v);
-    }
     const formatted = new Intl.NumberFormat(lang === "ar" ? "ar-DZ" : lang, {
       maximumFractionDigits: 0,
     }).format(dzd);

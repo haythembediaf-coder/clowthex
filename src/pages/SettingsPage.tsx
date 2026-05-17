@@ -193,7 +193,6 @@ export function SettingsPage() {
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="DZD">DZD — د.ج</SelectItem>
-              <SelectItem value="EUR">EUR — €</SelectItem>
             </SelectContent>
           </Select>
         </div>

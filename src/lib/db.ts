@@ -1,6 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
-export type Currency = "DZD" | "EUR";
+export type Currency = "DZD";
 
 export interface Product {
   id: string;
