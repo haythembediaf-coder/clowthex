@@ -51,6 +51,28 @@ export async function collectBackupData(): Promise<BackupData> {
 }
 
 /**
+ * Request storage permissions for Android
+ */
+async function requestStoragePermissions(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true;
+  
+  try {
+    // Check if we need permissions
+    const status = await Filesystem.checkPermissions();
+    
+    if (status.storage !== "granted") {
+      const result = await Filesystem.requestPermissions();
+      return result.storage === "granted";
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Permission error:", error);
+    return false;
+  }
+}
+
+/**
  * Exports all data to a JSON file.
  * - On Android (Capacitor): writes file to Documents folder then triggers
  *   the native Android Share sheet so the user can choose where to save it.
@@ -66,14 +88,35 @@ export async function exportBackup(): Promise<string> {
 
   // ── Native Android / iOS ──────────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
-    // 1. Write file to the app's Documents directory (no permission needed)
-    await Filesystem.writeFile({
-      path: fileName,
-      data: json,
-      directory: Directory.Documents,
-      encoding: Encoding.UTF8,
-      recursive: true,
-    });
+    // Request permissions first
+    const hasPermission = await requestStoragePermissions();
+    if (!hasPermission) {
+      throw new Error("PERMISSION_DENIED");
+    }
+    
+    // 1. Write file to the app's Documents directory
+    try {
+      await Filesystem.writeFile({
+        path: fileName,
+        data: json,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+    } catch (writeError) {
+      console.error("Write error:", writeError);
+      // Try external storage as fallback
+      try {
+        await Filesystem.writeFile({
+          path: fileName,
+          data: json,
+          directory: Directory.External,
+          encoding: Encoding.UTF8,
+        });
+      } catch (extError) {
+        console.error("External write error:", extError);
+        throw new Error("WRITE_FAILED");
+      }
+    }
 
     // 2. Resolve the native URI so we can share it
     const { uri } = await Filesystem.getUri({
@@ -82,7 +125,6 @@ export async function exportBackup(): Promise<string> {
     });
 
     // 3. Share via native Android share sheet
-    //    (user can choose: save to Files, send via email, etc.)
     await Share.share({
       title: "ClowtheX Backup",
       url: uri,
