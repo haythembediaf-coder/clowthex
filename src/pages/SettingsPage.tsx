@@ -226,41 +226,6 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      {/* ── Store info ───────────────────────────────────────────────────── */}
-      <Section icon={<Store className="w-4 h-4" />} title={t.settings.store}>
-        <div>
-          <Label className="text-xs">{t.settings.storeName}</Label>
-          <Input
-            value={storeName}
-            onChange={(e) => setStoreName(e.target.value)}
-            onBlur={() => setSetting("storeName", storeName)}
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">{t.settings.storePhone}</Label>
-          <Input
-            value={storePhone}
-            onChange={(e) => setStorePhone(e.target.value)}
-            onBlur={() => setSetting("storePhone", storePhone)}
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">{t.settings.storeAddress}</Label>
-          <Input
-            value={storeAddress}
-            onChange={(e) => setStoreAddress(e.target.value)}
-            onBlur={() => setSetting("storeAddress", storeAddress)}
-            className="mt-1"
-          />
-        </div>
-        <Button variant="gold" className="w-full" onClick={handleSaveStore}>
-          <Save className="w-4 h-4" />
-          {t.form.save}
-        </Button>
-      </Section>
-
       {/* ── Backup ───────────────────────────────────────────────────────── */}
       <Section icon={<Download className="w-4 h-4" />} title={t.settings.backup}>
         {/* Description */}
@@ -312,6 +277,41 @@ export function SettingsPage() {
           hidden
           onChange={handleFileChange}
         />
+      </Section>
+
+      {/* ── Store info ───────────────────────────────────────────────────── */}
+      <Section icon={<Store className="w-4 h-4" />} title={t.settings.store}>
+        <div>
+          <Label className="text-xs">{t.settings.storeName}</Label>
+          <Input
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            onBlur={() => setSetting("storeName", storeName)}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">{t.settings.storePhone}</Label>
+          <Input
+            value={storePhone}
+            onChange={(e) => setStorePhone(e.target.value)}
+            onBlur={() => setSetting("storePhone", storePhone)}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">{t.settings.storeAddress}</Label>
+          <Input
+            value={storeAddress}
+            onChange={(e) => setStoreAddress(e.target.value)}
+            onBlur={() => setSetting("storeAddress", storeAddress)}
+            className="mt-1"
+          />
+        </div>
+        <Button variant="gold" className="w-full" onClick={handleSaveStore}>
+          <Save className="w-4 h-4" />
+          {t.form.save}
+        </Button>
       </Section>
 
       {/* ── Export confirmation dialog ────────────────────────────────────── */}
