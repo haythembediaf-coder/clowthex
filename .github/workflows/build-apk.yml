@@ -54,18 +54,14 @@ jobs:
       - name: Generate ClowtheX App Icons
         run: bash scripts/gen-icons.sh
 
-      - name: Add Camera and Storage Permissions
+      - name: Add Camera Permissions
         run: |
           M="android/app/src/main/AndroidManifest.xml"
-          # Add camera permissions
+          # Add camera permissions only (no storage permissions needed without backup/restore)
           if ! grep -q "android.permission.CAMERA" "$M"; then
             sed -i 's|</manifest>|    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>\n</manifest>|' "$M"
           fi
-          # Add storage permissions for backup/restore
-          if ! grep -q "android.permission.READ_EXTERNAL_STORAGE" "$M"; then
-            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>\n</manifest>|' "$M"
-          fi
-          echo "=== Camera permissions ===" && grep -E "CAMERA|STORAGE" "$M" && echo "Camera permissions added successfully"
+          echo "=== Camera permissions ===" && grep "CAMERA" "$M" && echo "Camera permissions added successfully"
 
       - name: Patch MainActivity for WebView Camera
         run: |
