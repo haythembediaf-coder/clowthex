@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { toast } from "sonner";
 import {
   getAllProducts,
   getAllSales,
@@ -51,24 +52,46 @@ export async function collectBackupData(): Promise<BackupData> {
 }
 
 /**
- * Request storage permissions for Android
+ * Request storage permissions for Android - shows system permission dialog
  */
 async function requestStoragePermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return true;
   
   try {
-    // Check if we need permissions
-    const status = await Filesystem.checkPermissions();
+    console.log("Checking storage permissions...");
     
+    // Check current permission status
+    const status = await Filesystem.checkPermissions();
+    console.log("Current permission status:", status);
+    
+    // If not granted, request permissions
     if (status.storage !== "granted") {
+      console.log("Requesting storage permissions...");
       const result = await Filesystem.requestPermissions();
+      console.log("Permission request result:", result);
       return result.storage === "granted";
     }
     
     return true;
   } catch (error) {
     console.error("Permission error:", error);
-    return false;
+    // Try requesting anyway
+    try {
+      const result = await Filesystem.requestPermissions();
+      return result.storage === "granted";
+    } catch (e) {
+      console.error("Fallback permission error:", e);
+      return false;
+    }
+  }
+}
+
+/**
+ * Show a toast message (for use in export/import)
+ */
+function showToast(message: string, type: "success" | "error" | "info") {
+  if (typeof toast !== "undefined") {
+    toast[type](message);
   }
 }
 
@@ -86,13 +109,20 @@ export async function exportBackup(): Promise<string> {
   const dateStr = new Date().toISOString().slice(0, 10);
   const fileName = `clowthex-backup-${dateStr}.json`;
 
+  console.log("Starting export process...");
+
   // ── Native Android / iOS ──────────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
-    // Request permissions first
+    // Request permissions first - this will show the system permission dialog
+    console.log("Requesting storage permissions...");
     const hasPermission = await requestStoragePermissions();
+    
     if (!hasPermission) {
+      console.error("Storage permission denied");
       throw new Error("PERMISSION_DENIED");
     }
+    
+    console.log("Permission granted, writing file...");
     
     // 1. Write file to the app's Documents directory
     try {
@@ -102,16 +132,19 @@ export async function exportBackup(): Promise<string> {
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
       });
+      console.log("File written successfully");
     } catch (writeError) {
       console.error("Write error:", writeError);
       // Try external storage as fallback
       try {
+        console.log("Trying external storage...");
         await Filesystem.writeFile({
           path: fileName,
           data: json,
           directory: Directory.External,
           encoding: Encoding.UTF8,
         });
+        console.log("File written to external storage");
       } catch (extError) {
         console.error("External write error:", extError);
         throw new Error("WRITE_FAILED");
@@ -123,6 +156,7 @@ export async function exportBackup(): Promise<string> {
       path: fileName,
       directory: Directory.Documents,
     });
+    console.log("File URI:", uri);
 
     // 3. Share via native Android share sheet
     await Share.share({
@@ -130,6 +164,7 @@ export async function exportBackup(): Promise<string> {
       url: uri,
       dialogTitle: "حفظ النسخة الاحتياطية",
     });
+    console.log("Share dialog opened");
 
     return fileName;
   }
