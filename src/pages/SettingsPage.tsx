@@ -55,6 +55,8 @@ export function SettingsPage() {
 
   const [exporting, setExporting]           = useState(false);
   const [importPreview, setImportPreview]   = useState<ImportPreview | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportedFileName, setExportedFileName] = useState<string | null>(null);
   const [confirming, setConfirming]         = useState(false);
 
   // ── Load store settings ────────────────────────────────────────────────────
@@ -85,6 +87,8 @@ export function SettingsPage() {
     try {
       setExporting(true);
       const fileName = await exportBackup();
+      setExportedFileName(fileName);
+      setExportDialogOpen(true);
       toast.success(
         lang === "ar"
           ? `✅ تم التصدير: ${fileName}`
@@ -309,6 +313,43 @@ export function SettingsPage() {
           onChange={handleFileChange}
         />
       </Section>
+
+      {/* ── Export confirmation dialog ────────────────────────────────────── */}
+      <AlertDialog open={exportDialogOpen} onOpenChange={(open) => !open && setExportDialogOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+              {i("تم حفظ النسخة الاحتياطية", "Sauvegarde enregistrée", "Backup saved")}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  {i(
+                    "لقد تم حفظ الملف في الموقع الذي اخترته.",
+                    "Le fichier a été enregistré à l'emplacement choisi.",
+                    "The file was saved at the chosen location.",
+                  )}
+                </p>
+                {exportedFileName && (
+                  <p className="text-xs text-muted-foreground">
+                    {i("اسم الملف:", "Nom du fichier:", "File name:")} {exportedFileName}
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setExportDialogOpen(false)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {i("حسناً", "OK", "OK")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Import confirmation dialog ────────────────────────────────────── */}
       <AlertDialog open={!!importPreview} onOpenChange={(open) => !open && !confirming && setImportPreview(null)}>
