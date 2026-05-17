@@ -1,7 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { toast } from "sonner";
 import {
   getAllProducts,
   getAllSales,
@@ -52,56 +51,8 @@ export async function collectBackupData(): Promise<BackupData> {
 }
 
 /**
- * Request storage permissions for Android - shows system permission dialog
- */
-async function requestStoragePermissions(): Promise<boolean> {
-  if (!Capacitor.isNativePlatform()) return true;
-  
-  try {
-    console.log("Checking storage permissions...");
-    
-    // Check current permission status
-    const status = await Filesystem.checkPermissions();
-    console.log("Current permission status:", status);
-    
-    // If not granted, request permissions
-    if (status.storage !== "granted") {
-      console.log("Requesting storage permissions...");
-      const result = await Filesystem.requestPermissions();
-      console.log("Permission request result:", result);
-      return result.storage === "granted";
-    }
-    
-    return true;
-  } catch (error) {
-    console.error("Permission error:", error);
-    // Try requesting anyway
-    try {
-      const result = await Filesystem.requestPermissions();
-      return result.storage === "granted";
-    } catch (e) {
-      console.error("Fallback permission error:", e);
-      return false;
-    }
-  }
-}
-
-/**
- * Show a toast message (for use in export/import)
- */
-function showToast(message: string, type: "success" | "error" | "info") {
-  if (typeof toast !== "undefined") {
-    toast[type](message);
-  }
-}
-
-/**
- * Exports all data to a JSON file.
- * - On Android (Capacitor): writes file to Documents folder then triggers
- *   the native Android Share sheet so the user can choose where to save it.
- * - On Web: triggers a browser download.
- *
- * Returns a human-readable description of where the file was saved.
+ * Export backup using Share API with base64 data
+ * This approach works without storage permissions on Android 10+
  */
 export async function exportBackup(): Promise<string> {
   const data = await collectBackupData();
@@ -109,64 +60,61 @@ export async function exportBackup(): Promise<string> {
   const dateStr = new Date().toISOString().slice(0, 10);
   const fileName = `clowthex-backup-${dateStr}.json`;
 
-  console.log("Starting export process...");
-
   // ── Native Android / iOS ──────────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
-    // Request permissions first - this will show the system permission dialog
-    console.log("Requesting storage permissions...");
-    const hasPermission = await requestStoragePermissions();
-    
-    if (!hasPermission) {
-      console.error("Storage permission denied");
-      throw new Error("PERMISSION_DENIED");
-    }
-    
-    console.log("Permission granted, writing file...");
-    
-    // 1. Write file to the app's Documents directory
     try {
+      // Write to app's private directory (no permission needed)
       await Filesystem.writeFile({
         path: fileName,
         data: json,
-        directory: Directory.Documents,
+        directory: Directory.Data,
         encoding: Encoding.UTF8,
       });
-      console.log("File written successfully");
-    } catch (writeError) {
-      console.error("Write error:", writeError);
-      // Try external storage as fallback
+
+      // Get the file URI
+      const { uri } = await Filesystem.getUri({
+        path: fileName,
+        directory: Directory.Data,
+      });
+
+      // Share the file using native share sheet
+      await Share.share({
+        title: "ClowtheX Backup",
+        text: `نسخة احتياطية من ${new Date().toLocaleDateString("ar-DZ")}`,
+        url: uri,
+        dialogTitle: "حفظ النسخة الاحتياطية",
+      });
+
+      return fileName;
+    } catch (error) {
+      console.error("Export error:", error);
+      
+      // If Share fails, try to save to Documents folder
       try {
-        console.log("Trying external storage...");
         await Filesystem.writeFile({
           path: fileName,
           data: json,
-          directory: Directory.External,
+          directory: Directory.Documents,
           encoding: Encoding.UTF8,
         });
-        console.log("File written to external storage");
-      } catch (extError) {
-        console.error("External write error:", extError);
-        throw new Error("WRITE_FAILED");
+
+        const { uri } = await Filesystem.getUri({
+          path: fileName,
+          directory: Directory.Documents,
+        });
+
+        await Share.share({
+          title: "ClowtheX Backup",
+          url: uri,
+          dialogTitle: "حفظ النسخة الاحتياطية",
+        });
+
+        return fileName;
+      } catch (docError) {
+        console.error("Documents folder error:", docError);
+        throw new Error("EXPORT_FAILED");
       }
     }
-
-    // 2. Resolve the native URI so we can share it
-    const { uri } = await Filesystem.getUri({
-      path: fileName,
-      directory: Directory.Documents,
-    });
-    console.log("File URI:", uri);
-
-    // 3. Share via native Android share sheet
-    await Share.share({
-      title: "ClowtheX Backup",
-      url: uri,
-      dialogTitle: "حفظ النسخة الاحتياطية",
-    });
-    console.log("Share dialog opened");
-
-    return fileName;
   }
 
   // ── Web / PWA ─────────────────────────────────────────────────────────────
@@ -223,8 +171,6 @@ export async function parseBackupFile(file: File): Promise<ImportPreview> {
 
 /**
  * Atomically replaces all app data with the content of the backup.
- * All three stores (products, sales, settings) are cleared first to prevent
- * orphaned records, then refilled inside the same IndexedDB transaction.
  */
 export async function restoreBackup(preview: ImportPreview): Promise<void> {
   await importAllData({
