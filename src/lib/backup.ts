@@ -50,9 +50,42 @@ export async function collectBackupData(): Promise<BackupData> {
   };
 }
 
+// ─── Permissions ──────────────────────────────────────────────────────────────
+
+/**
+ * Create a temporary file for export. Uses Cache directory which doesn't need permissions.
+ */
+async function createTempFile(fileName: string, data: string): Promise<string> {
+  if (!Capacitor.isNativePlatform()) {
+    return data; // Return data directly on web
+  }
+
+  try {
+    // Use Cache directory - no permissions needed
+    await Filesystem.writeFile({
+      path: fileName,
+      data: data,
+      directory: Directory.Cache,
+      encoding: Encoding.UTF8,
+    });
+
+    const { uri } = await Filesystem.getUri({
+      path: fileName,
+      directory: Directory.Cache,
+    });
+
+    return uri;
+  } catch (err) {
+    console.error("Failed to create temp file:", err);
+    throw new Error("TEMP_FILE_ERROR");
+  }
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
 /**
  * Exports all data to a JSON file.
- * - On Android (Capacitor): writes file to Documents folder then triggers
+ * - On Android (Capacitor): writes file to Cache folder then triggers
  *   the native Android Share sheet so the user can choose where to save it.
  * - On Web: triggers a browser download.
  *
@@ -66,30 +99,27 @@ export async function exportBackup(): Promise<string> {
 
   // ── Native Android / iOS ──────────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
-    // 1. Write file to the app's Documents directory (no permission needed)
-    await Filesystem.writeFile({
-      path: fileName,
-      data: json,
-      directory: Directory.Documents,
-      encoding: Encoding.UTF8,
-      recursive: true,
-    });
+    try {
+      // 1. Create temp file in Cache directory (no permissions needed)
+      const fileUri = await createTempFile(fileName, json);
 
-    // 2. Resolve the native URI so we can share it
-    const { uri } = await Filesystem.getUri({
-      path: fileName,
-      directory: Directory.Documents,
-    });
+      // 2. Share via native Android share sheet
+      //    (user can choose: save to Files, send via WhatsApp, email, etc.)
+      await Share.share({
+        title: "ClowtheX Backup",
+        url: fileUri,
+        dialogTitle: "حفظ النسخة الاحتياطية",
+      });
 
-    // 3. Share via native Android share sheet
-    //    (user can choose: save to Files, send via WhatsApp, email, etc.)
-    await Share.share({
-      title: "ClowtheX Backup",
-      url: uri,
-      dialogTitle: "حفظ النسخة الاحتياطية",
-    });
-
-    return fileName;
+      return fileName;
+    } catch (err) {
+      const message = (err as Error)?.message;
+      if (message === "AbortError" || message === "Share canceled.") {
+        throw err; // Re-throw cancellation
+      }
+      console.error("Export error:", err);
+      throw new Error("EXPORT_FAILED");
+    }
   }
 
   // ── Web / PWA ─────────────────────────────────────────────────────────────

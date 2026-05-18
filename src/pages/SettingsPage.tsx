@@ -98,9 +98,26 @@ export function SettingsPage() {
         { duration: 4000 },
       );
     } catch (err) {
-      // User cancelled the share dialog — not an error
       const name = (err as DOMException | Error)?.name;
-      if (name === "AbortError") return;
+      const message = (err as Error)?.message;
+      
+      // User cancelled the share dialog — not an error
+      if (name === "AbortError" || message === "Share canceled." || message === "EXPORT_FAILED") {
+        return;
+      }
+      
+      // Handle other errors
+      if (message === "TEMP_FILE_ERROR") {
+        toast.error(
+          lang === "ar"
+            ? "❌ خطأ في إنشاء ملف النسخة الاحتياطية"
+            : lang === "fr"
+            ? "❌ Erreur lors de la création du fichier"
+            : "❌ Failed to create backup file",
+        );
+        return;
+      }
+      
       console.error("Export error:", err);
       toast.error(
         lang === "ar" ? "فشل التصدير" : lang === "fr" ? "Échec de l'export" : "Export failed",
