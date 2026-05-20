@@ -86,42 +86,55 @@ export function SettingsPage() {
   const handleExport = async () => {
     try {
       setExporting(true);
-      const fileName = await exportBackup();
-      setExportedFileName(fileName);
+      const result = await exportBackup();
+      setExportedFileName(result.fileName);
       setExportDialogOpen(true);
       toast.success(
         lang === "ar"
-          ? `✅ تم التصدير: ${fileName}`
+          ? `✅ تم التصدير: ${result.fileName}`
           : lang === "fr"
-          ? `✅ Exporté: ${fileName}`
-          : `✅ Exported: ${fileName}`,
+          ? `✅ Exporté: ${result.fileName}`
+          : `✅ Exported: ${result.fileName}`,
         { duration: 4000 },
       );
     } catch (err) {
       const name = (err as DOMException | Error)?.name;
       const message = (err as Error)?.message;
       
-      // User cancelled the share dialog — not an error
-      if (name === "AbortError" || message === "Share canceled." || message === "EXPORT_FAILED") {
+      // User cancelled — not an error
+      if (
+        name === "AbortError" ||
+        message === "Share canceled." ||
+        message?.includes("canceled") ||
+        message?.includes("Cancelled")
+      ) {
         return;
       }
       
-      // Handle other errors
-      if (message === "TEMP_FILE_ERROR") {
-        toast.error(
-          lang === "ar"
-            ? "❌ خطأ في إنشاء ملف النسخة الاحتياطية"
-            : lang === "fr"
-            ? "❌ Erreur lors de la création du fichier"
-            : "❌ Failed to create backup file",
-        );
-        return;
-      }
+      // Handle specific error codes
+      const errorMap: Record<string, { ar: string; fr: string; en: string }> = {
+        TEMP_FILE_ERROR: {
+          ar: "❌ خطأ في إنشاء ملف النسخة الاحتياطية",
+          fr: "❌ Erreur lors de la création du fichier",
+          en: "❌ Failed to create backup file",
+        },
+        PERMISSION_DENIED: {
+          ar: "❌ تم رفض الأذونات المطلوبة",
+          fr: "❌ Permissions refusées",
+          en: "❌ Permission denied",
+        },
+        STORAGE_ERROR: {
+          ar: "❌ مشكلة في التخزين",
+          fr: "❌ Erreur de stockage",
+          en: "❌ Storage error",
+        },
+      };
       
+      const errorType = errorMap[message || ""] || errorMap.TEMP_FILE_ERROR;
+      const errorMsg = lang === "ar" ? errorType.ar : lang === "fr" ? errorType.fr : errorType.en;
+      
+      toast.error(errorMsg);
       console.error("Export error:", err);
-      toast.error(
-        lang === "ar" ? "فشل التصدير" : lang === "fr" ? "Échec de l'export" : "Export failed",
-      );
     } finally {
       setExporting(false);
     }
@@ -139,17 +152,55 @@ export function SettingsPage() {
       setImportPreview(preview);
     } catch (err) {
       const msg = (err as Error).message;
-      const label =
-        lang === "ar"
-          ? msg === "INVALID_JSON"
-            ? "الملف تالف أو غير صالح"
-            : msg === "MISSING_PRODUCTS"
-            ? "الملف لا يحتوي على بيانات منتجات"
-            : "ملف غير معروف"
-          : lang === "fr"
-          ? "Fichier invalide"
-          : "Invalid backup file";
-      toast.error(label);
+      
+      const errorMap: Record<string, { ar: string; fr: string; en: string }> = {
+        INVALID_JSON: {
+          ar: "الملف تالف أو غير صالح (JSON غير صحيح)",
+          fr: "Fichier corrompu ou invalide (JSON incorrect)",
+          en: "Corrupted or invalid file (invalid JSON)",
+        },
+        MISSING_PRODUCTS: {
+          ar: "الملف لا يحتوي على بيانات منتجات",
+          fr: "Le fichier ne contient pas de données de produits",
+          en: "File contains no product data",
+        },
+        INVALID_FORMAT: {
+          ar: "تنسيق ملف غير صالح",
+          fr: "Format de fichier invalide",
+          en: "Invalid file format",
+        },
+        FILE_TOO_LARGE: {
+          ar: "الملف كبير جداً (الحد الأقصى 50 ميجابايت)",
+          fr: "Fichier trop volumineux (maximum 50 Mo)",
+          en: "File too large (max 50 MB)",
+        },
+        FILE_READ_ERROR: {
+          ar: "فشل قراءة الملف",
+          fr: "Impossible de lire le fichier",
+          en: "Failed to read file",
+        },
+        INCOMPATIBLE_BACKUP: {
+          ar: "هذا ملف نسخة احتياطية من تطبيق آخر",
+          fr: "Ceci est un fichier de sauvegarde d'une autre application",
+          en: "This backup is from a different app",
+        },
+        EMPTY_BACKUP: {
+          ar: "النسخة الاحتياطية فارغة",
+          fr: "La sauvegarde est vide",
+          en: "Backup is empty",
+        },
+        INVALID_FILE_TYPE: {
+          ar: "نوع ملف غير صالح (يجب أن يكون JSON)",
+          fr: "Type de fichier invalide (doit être JSON)",
+          en: "Invalid file type (must be JSON)",
+        },
+      };
+      
+      const errorType = errorMap[msg] || errorMap.INVALID_JSON;
+      const errorMsg = lang === "ar" ? errorType.ar : lang === "fr" ? errorType.fr : errorType.en;
+      
+      toast.error(errorMsg);
+      console.error("Import error:", err);
     }
   };
 
